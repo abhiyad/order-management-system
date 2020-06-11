@@ -1,7 +1,9 @@
 package com.catalogue.inventoryservice;
 
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.http.HttpStatus;
 import org.springframework.web.bind.annotation.*;
+import org.springframework.web.server.ResponseStatusException;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -38,14 +40,12 @@ public class InventoryController {
         return products;
     }
     @RequestMapping("/search/{isbn}")
-    public Book search(@PathVariable("isbn")String isbn){
+    public Book search(@PathVariable("isbn")String isbn)throws ResponseStatusException {
         init();
+        if ( bookRepository.existsById(isbn) )
         return bookRepository.findById(isbn).orElse(new Book("null","null"));
-    }
-    @PostMapping("/demo")
-    public String fun(@RequestBody Book book){
-        String name = book.getName();
-        System.out.println(name);
-        return "lol";
+        else{
+            throw new ResponseStatusException(HttpStatus.NOT_FOUND,"Book not found");
+        }
     }
 }

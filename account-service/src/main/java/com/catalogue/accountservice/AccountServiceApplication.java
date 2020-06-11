@@ -11,7 +11,9 @@ public class AccountServiceApplication {
 	@Bean
 	@LoadBalanced
 	public RestTemplate getRestTemplate(){
-		return new RestTemplate();
+		RestTemplate template = new RestTemplate();
+		template.setErrorHandler(new ClientErrorHandler());
+		return template;
 	};
 	public static void main(String[] args) {
 		SpringApplication.run(AccountServiceApplication.class, args);

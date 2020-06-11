@@ -7,19 +7,14 @@ import com.catalogue.accountservice.domain.MyUser;
 import com.catalogue.accountservice.domain.UserOrders;
 import com.catalogue.accountservice.services.JwtUserDetailsService;
 import com.fasterxml.jackson.databind.ObjectMapper;
-import javassist.NotFoundException;
 import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.http.HttpEntity;
-import org.springframework.http.HttpHeaders;
-import org.springframework.http.MediaType;
-import org.springframework.http.ResponseEntity;
+import org.springframework.http.*;
 import org.springframework.security.core.Authentication;
 import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.security.core.userdetails.UserDetails;
 import org.springframework.web.bind.annotation.*;
 import org.springframework.web.client.RestTemplate;
-
-import javax.servlet.http.HttpSession;
+import org.springframework.web.server.ResponseStatusException;
 import java.util.*;
 
 
@@ -40,9 +35,13 @@ public class AccountServiceController {
         return ResponseEntity.ok(userService.save(user));
     }
     @RequestMapping("/search/{isbn}")
-    public Book search(@PathVariable("isbn")String isbn){
-        Book book = restTemplate.getForObject("http://InventoryService/inventory/search/" + isbn , Book.class);
-        return book;
+    public Book search(@PathVariable("isbn")String isbn)throws ResponseStatusException {
+        try {
+            Book book = restTemplate.getForObject("http://InventoryService/inventory/search/" + isbn, Book.class);
+            return book;
+        } catch (ResponseStatusException e) {
+            throw new ResponseStatusException(HttpStatus.NOT_FOUND,"Book not found ! ");
+        }
     }
     @RequestMapping("/orders")
     public List<CatalogueOrder> getAllOrders(){
@@ -51,37 +50,49 @@ public class AccountServiceController {
         return allOrders;
     }
     @RequestMapping(value="/create/{isbn}")
-    public CatalogueOrder createOrder(@PathVariable("isbn")String isbn) {
-        HttpHeaders headers = new HttpHeaders();
-        headers.setContentType(MediaType.APPLICATION_JSON);
-        headers.setAccept(Collections.singletonList(MediaType.APPLICATION_JSON));
-        Map<String, Object> map = getObjectMap(isbn,"false");
-        HttpEntity<Map<String, Object>> entity = new HttpEntity<>(map, headers);
-        ResponseEntity<CatalogueOrder> response = restTemplate.postForEntity(
-                "http://OrderService/orders/create", entity, CatalogueOrder.class);
-        UserOrders userOrders = restTemplate.getForObject(
-                "http://UserOrderService/orders/add/" + getUsername() + "/" + String.valueOf(response.getBody().getId()),UserOrders.class);
-        System.out.println(userOrders.toString());
-        return response.getBody();
-    }
-    @RequestMapping(value="/update/{id}")
-    public CatalogueOrder updateOrder(@PathVariable("id") String id, @RequestBody CatalogueOrder updatedOrder)throws NotFoundException {
-        List<Long>orderIDList = getOrderIDListUtil();
-        if ( orderIDList.contains(Long.valueOf(id)) ){
-            // proceed with update
+    public CatalogueOrder createOrder(@PathVariable("isbn")String isbn) throws ResponseStatusException{
+        try {
+            search(isbn);
             HttpHeaders headers = new HttpHeaders();
             headers.setContentType(MediaType.APPLICATION_JSON);
             headers.setAccept(Collections.singletonList(MediaType.APPLICATION_JSON));
-            Map<String, Object> map = getObjectMap(updatedOrder.getIsbn(),String.valueOf(updatedOrder.getSent()));
+            Map<String, Object> map = getObjectMap(isbn, "false");
             HttpEntity<Map<String, Object>> entity = new HttpEntity<>(map, headers);
             ResponseEntity<CatalogueOrder> response = restTemplate.postForEntity(
-                    "http://OrderService/orders/update/" + id, entity, CatalogueOrder.class);
+                    "http://OrderService/orders/create", entity, CatalogueOrder.class);
+            UserOrders userOrders = restTemplate.getForObject(
+                    "http://UserOrderService/orders/add/" + getUsername() + "/" + String.valueOf(response.getBody().getId()), UserOrders.class);
+            System.out.println(userOrders.toString());
+            return response.getBody();
+        }
+        catch (ResponseStatusException e){
+            throw new ResponseStatusException(HttpStatus.NOT_FOUND,"This book is not available");
+        }
+    }
+    @RequestMapping(value="/update/{id}")
+    public CatalogueOrder updateOrder(@PathVariable("id") String id, @RequestBody CatalogueOrder updatedOrder)throws ResponseStatusException {
+        List<Long>orderIDList = getOrderIDListUtil();
+        if ( orderIDList.contains(Long.valueOf(id)) ){
+            try {
+                search(updatedOrder.getIsbn());
+                HttpHeaders headers = new HttpHeaders();
+                headers.setContentType(MediaType.APPLICATION_JSON);
+                headers.setAccept(Collections.singletonList(MediaType.APPLICATION_JSON));
+                Map<String, Object> map = getObjectMap(updatedOrder.getIsbn(), String.valueOf(updatedOrder.getSent()));
+                HttpEntity<Map<String, Object>> entity = new HttpEntity<>(map, headers);
+                ResponseEntity<CatalogueOrder> response = restTemplate.postForEntity(
+                        "http://OrderService/orders/update/" + id, entity, CatalogueOrder.class);
+            } catch (ResponseStatusException e) {
+                throw new ResponseStatusException(HttpStatus.NOT_FOUND,"The update Book is not found");
+            }
         }
         else{
-            throw new NotFoundException("This Order does not belong to the User");
+            throw new ResponseStatusException(HttpStatus.FORBIDDEN,"Either Order does not belong to the user");
         }
         return updatedOrder;
     }
+
+    // Utility Functions to support above endpoints
 
     public String getUsername(){
         Authentication authentication = SecurityContextHolder.getContext().getAuthentication();

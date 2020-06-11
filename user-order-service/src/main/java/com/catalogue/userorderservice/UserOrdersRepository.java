@@ -6,4 +6,5 @@ import org.springframework.stereotype.Repository;
 @Repository
 public interface UserOrdersRepository extends CrudRepository<UserOrders, Long> {
     UserOrders findOrdersByUsername(String username);
+    Boolean existsByUsername(String username);
 }
